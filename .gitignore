@@ -2,8 +2,6 @@
 *.swp
 *.pyc
 
-version.py
-
 data/
 build/
 encoding/_ext/
