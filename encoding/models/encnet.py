@@ -19,14 +19,14 @@ __all__ = ['EncNet', 'EncModule', 'get_encnet', 'get_encnet_resnet50_pcontext',
 
 class EncNet(BaseNet):
     def __init__(self, nclass, backbone, aux=True, se_loss=True,
-                 norm_layer=nn.BatchNorm2d, **kwargs):
+                 norm_layer_1d=nn.BatchNorm1d, norm_layer_2d=nn.BatchNorm2d, **kwargs):
         super(EncNet, self).__init__(nclass, backbone, aux, se_loss,
-                                     norm_layer=norm_layer, **kwargs)
+                                     norm_layer=norm_layer_2d, **kwargs)
         self.head = EncHead([512, 1024, 2048], self.nclass, se_loss=se_loss, jpu=kwargs['jpu'],
-                            lateral=kwargs['lateral'], norm_layer=norm_layer,
+                            lateral=kwargs['lateral'], norm_layer_1d=norm_layer_1d, norm_layer_2d = norm_layer_2d,
                             up_kwargs=self._up_kwargs)
         if aux:
-            self.auxlayer = FCNHead(1024, nclass, norm_layer=norm_layer)
+            self.auxlayer = FCNHead(1024, nclass, norm_layer=norm_layer_2d)
 
     def forward(self, x):
         imsize = x.size()[2:]
@@ -42,15 +42,15 @@ class EncNet(BaseNet):
 
 
 class EncModule(nn.Module):
-    def __init__(self, in_channels, nclass, ncodes=32, se_loss=True, norm_layer=None):
+    def __init__(self, in_channels, nclass, ncodes=32, se_loss=True, norm_layer_1d=None, norm_layer_2d=None):
         super(EncModule, self).__init__()
         self.se_loss = se_loss
         self.encoding = nn.Sequential(
             nn.Conv2d(in_channels, in_channels, 1, bias=False),
-            norm_layer(in_channels),
+            norm_layer_2d(in_channels),
             nn.ReLU(inplace=True),
             encoding.nn.Encoding(D=in_channels, K=ncodes),
-            encoding.nn.BatchNorm1d(ncodes),
+            norm_layer_1d(ncodes),
             nn.ReLU(inplace=True),
             encoding.nn.Mean(dim=1))
         self.fc = nn.Sequential(
@@ -72,34 +72,34 @@ class EncModule(nn.Module):
 
 class EncHead(nn.Module):
     def __init__(self, in_channels, out_channels, se_loss=True, jpu=True, lateral=False,
-                 norm_layer=None, up_kwargs=None):
+                 norm_layer_1d=None, norm_layer_2d=None, up_kwargs=None):
         super(EncHead, self).__init__()
         self.se_loss = se_loss
         self.lateral = lateral
         self.up_kwargs = up_kwargs
         self.conv5 = nn.Sequential(nn.Conv2d(in_channels[-1], 512, 1, bias=False),
-                                   norm_layer(512),
+                                   norm_layer_2d(512),
                                    nn.ReLU(inplace=True)) if jpu else \
                      nn.Sequential(nn.Conv2d(in_channels[-1], 512, 3, padding=1, bias=False),
-                                   norm_layer(512),
+                                   norm_layer_2d(512),
                                    nn.ReLU(inplace=True))
         if lateral:
             self.connect = nn.ModuleList([
                 nn.Sequential(
                     nn.Conv2d(in_channels[0], 512, kernel_size=1, bias=False),
-                    norm_layer(512),
+                    norm_layer_2d(512),
                     nn.ReLU(inplace=True)),
                 nn.Sequential(
                     nn.Conv2d(in_channels[1], 512, kernel_size=1, bias=False),
-                    norm_layer(512),
+                    norm_layer_2d(512),
                     nn.ReLU(inplace=True)),
             ])
             self.fusion = nn.Sequential(
                     nn.Conv2d(3*512, 512, kernel_size=3, padding=1, bias=False),
-                    norm_layer(512),
+                    norm_layer_2d(512),
                     nn.ReLU(inplace=True))
         self.encmodule = EncModule(512, out_channels, ncodes=32,
-            se_loss=se_loss, norm_layer=norm_layer)
+            se_loss=se_loss, norm_layer_1d=norm_layer_1d, norm_layer_2d=norm_layer_2d)
         self.conv6 = nn.Sequential(nn.Dropout2d(0.1, False),
                                    nn.Conv2d(512, out_channels, 1))
 
